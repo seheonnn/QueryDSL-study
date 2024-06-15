@@ -1,6 +1,7 @@
 
 src/main/generated
 자료
+.DS_Store
 
 HELP.md
 .gradle
