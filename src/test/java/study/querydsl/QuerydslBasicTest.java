@@ -1,6 +1,7 @@
 package study.querydsl;
 
 import static org.assertj.core.api.Assertions.*;
+import static study.querydsl.entity.QMember.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,6 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import jakarta.persistence.EntityManager;
 import study.querydsl.entity.Member;
-import study.querydsl.entity.QMember;
 import study.querydsl.entity.Team;
 
 @SpringBootTest
@@ -60,12 +60,46 @@ public class QuerydslBasicTest {
 
 	@Test
 	public void startQuerydsl() {
-		QMember m = new QMember("m");
+		// 방법 1) QMember m = QMember.member;
 
+		// 방법 2) QMember m = new QMember("m"); // 주로 같은 테이블을 조인해야 하는 경우에만 사용
+		// Member findMember = queryFactory
+		// 	.select(m)
+		// 	.from(m)
+		// 	.where(m.username.eq("member1")) // 파라미터 바인딩
+		// 	.fetchOne();
+
+		// 방법 3) option + Enter 로 static import (QMember.member -> member) (권장)
 		Member findMember = queryFactory
-			.select(m)
-			.from(m)
-			.where(m.username.eq("member1")) // 파라미터 바인딩
+			.select(member)
+			.from(member)
+			.where(member.username.eq("member1")) // 파라미터 바인딩
+			.fetchOne();
+
+		assertThat(findMember.getUsername()).isEqualTo("member1");
+	}
+
+	@Test
+	public void search() {
+		Member findMember = queryFactory
+			.selectFrom(member)
+			.where(member.username.eq("member1")
+				.and(member.age.eq(10)))
+			.fetchOne();
+
+		assertThat(findMember.getUsername()).isEqualTo("member1");
+	}
+
+	@Test
+	public void searchAndParam() {
+		Member findMember = queryFactory
+			.selectFrom(member)
+			.where(
+				// and인 경우
+				member.username.eq("member1"),
+				member.age.eq(10),
+				null // null인 경우는 무시하기 때문에 동적 쿼리에 사용
+			)
 			.fetchOne();
 
 		assertThat(findMember.getUsername()).isEqualTo("member1");
