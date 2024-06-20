@@ -2,6 +2,7 @@ package study.querydsl;
 
 import static org.assertj.core.api.Assertions.*;
 import static study.querydsl.entity.QMember.*;
+import static study.querydsl.entity.QTeam.*;
 
 import java.util.List;
 
@@ -11,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.querydsl.core.QueryResults;
+import com.querydsl.core.Tuple;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import jakarta.persistence.EntityManager;
@@ -163,5 +166,81 @@ public class QuerydslBasicTest {
 		assertThat(member5.getUsername()).isEqualTo("member5");
 		assertThat(member6.getUsername()).isEqualTo("member6");
 		assertThat(memberNull.getUsername()).isNull();
+	}
+
+	@Test
+	public void paging1() {
+		List<Member> result = queryFactory
+			.selectFrom(member)
+			.orderBy(member.username.desc())
+			.offset(1)
+			.limit(2)
+			.fetch();
+
+		assertThat(result.size()).isEqualTo(2);
+	}
+
+	@Test
+	public void paging2() {
+
+		// where 나 join 을 추가하는 경우 카운트 쿼리와 컨텐츠 쿼리에 모두 붙기 때문에 성능상 별로. 따로따로 작성하는 것이 좋다 !
+		QueryResults<Member> queryResults = queryFactory
+			.selectFrom(member)
+			.orderBy(member.username.desc())
+			.offset(1)
+			.limit(2)
+			.fetchResults(); // 쿼리 두 번
+
+		// 총 4개 2개씩 2페이지
+		assertThat(queryResults.getTotal()).isEqualTo(4);
+		assertThat(queryResults.getLimit()).isEqualTo(2);
+		assertThat(queryResults.getOffset()).isEqualTo(1);
+		assertThat(queryResults.getResults().size()).isEqualTo(2); // 한 페이지당 개수
+	}
+
+	@Test
+	void aggregation() {
+
+		List<Tuple> result = queryFactory
+			.select(
+				member.count(),
+				member.age.sum(),
+				member.age.avg(),
+				member.age.max(),
+				member.age.min()
+			)
+			.from(member)
+			.fetch();
+
+		Tuple tuple = result.get(0);
+		assertThat(tuple.get(member.count())).isEqualTo(4);
+		assertThat(tuple.get(member.age.sum())).isEqualTo(100);
+		assertThat(tuple.get(member.age.avg())).isEqualTo(25);
+		assertThat(tuple.get(member.age.max())).isEqualTo(40);
+		assertThat(tuple.get(member.age.min())).isEqualTo(10);
+	}
+
+	/**
+	 * 팀의 이름과 각 팀의 평균 연령을 구해라.
+	 *
+	 */
+	@Test
+	public void group() {
+		List<Tuple> result = queryFactory
+			.select(team.name, member.age.avg())
+			.from(member)
+			.join(member.team, team)
+			.groupBy(team.name)
+			// .having() // having 도 가능
+			.fetch();
+
+		Tuple teamA = result.get(0);
+		Tuple teamB = result.get(1);
+
+		assertThat(teamA.get(team.name)).isEqualTo("teamA");
+		assertThat(teamA.get(member.age.avg())).isEqualTo(15); // (10 + 20) / 2
+
+		assertThat(teamB.get(team.name)).isEqualTo("teamB");
+		assertThat(teamB.get(member.age.avg())).isEqualTo(35); // (30 + 40) / 2
 	}
 }

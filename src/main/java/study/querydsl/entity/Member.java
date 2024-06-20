@@ -50,6 +50,6 @@ public class Member {
 
 	public void changeTeam(Team team) { // 양방향 연관관계 처리 메서드
 		this.team = team;
-		team.getMembers().add(this);
+		team.getMember().add(this);
 	}
 }
