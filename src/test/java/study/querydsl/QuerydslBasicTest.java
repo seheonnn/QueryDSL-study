@@ -1,5 +1,6 @@
 package study.querydsl;
 
+import static com.querydsl.jpa.JPAExpressions.*;
 import static org.assertj.core.api.Assertions.*;
 import static study.querydsl.entity.QMember.*;
 import static study.querydsl.entity.QTeam.*;
@@ -14,10 +15,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.PersistenceUnit;
 import study.querydsl.entity.Member;
+import study.querydsl.entity.QMember;
 import study.querydsl.entity.Team;
 
 @SpringBootTest
@@ -28,6 +34,8 @@ public class QuerydslBasicTest {
 	EntityManager em; // 이미 동시성 문제, 멀티 쓰레드 환경 고려하여 설계되어 있음
 
 	JPAQueryFactory queryFactory;
+	@PersistenceUnit // 엔티티 매니저를 만드는 팩토리
+	EntityManagerFactory emf;
 
 	@BeforeEach
 	public void before() {
@@ -331,5 +339,182 @@ public class QuerydslBasicTest {
 		// 주의! 문법을 잘 봐야 한다. **leftJoin()** 부분에 일반 조인과 다르게 엔티티 하나만 들어간다.
 		// 일반적인 leftJoin: `leftJoin(member.team, team)`
 		// on 절을 이용한 외부조인: `from(member).leftJoin(team).on(xxx)`
+	}
+
+	// 페치조인 -> 조인은 쿼리를 두 번 날림. 이를 한 번만 날리도록
+	@Test
+	public void fetchJoinNo() {
+		em.flush();
+		em.clear();
+
+		// Lazy이므로 Member만 조회
+		Member findMember = queryFactory
+			.selectFrom(member)
+			.where(member.username.eq("member1"))
+			.fetchOne();
+
+		boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());// 현재 로딩된 엔티티인지 확인
+		// 페치 조인 미적용 + Lazy 이므로 현재 로딩되어 있으면 안 됨
+		assertThat(loaded).as("페치 조인 미적용").isFalse();
+	}
+
+	@Test
+	public void fetchJoinUse() {
+		em.flush();
+		em.clear();
+
+		// Lazy이므로 Member만 조회
+		Member findMember = queryFactory
+			.selectFrom(member)
+			.join(member.team, team).fetchJoin() // 문법은 동일 fetchJoin()만 붙이기
+			.where(member.username.eq("member1"))
+			.fetchOne();
+
+		boolean loaded = emf.getPersistenceUnitUtil().isLoaded(findMember.getTeam());
+		// Team까지 불러옴. but, 쿼리 하나로
+		assertThat(loaded).as("페치 조인 적용").isTrue();
+	}
+
+	/**
+	 * 나이가 가장 많은 회원 조회
+	 */
+	@Test
+	public void subQuery() {
+
+		QMember memberSub = new QMember("memberSub"); // 메인 쿼리와 서브쿼리의 alias 구분을 위함
+
+		List<Member> result = queryFactory
+			.selectFrom(member)
+			.where(member.age.eq(
+				select(memberSub.age.max())
+					.from(memberSub)
+			))
+			.fetch();
+
+		assertThat(result).extracting("age")
+			.containsExactly(40);
+	}
+
+	/**
+	 * 나이가 평균 이상인 회원 조회
+	 */
+	@Test
+	public void subQueryGoe() {
+
+		QMember memberSub = new QMember("memberSub"); // 메인 쿼리와 서브쿼리의 alias 구분을 위함
+
+		List<Member> result = queryFactory
+			.selectFrom(member)
+			.where(member.age.goe(
+				select(memberSub.age.avg())
+					.from(memberSub)
+			))
+			.fetch();
+
+		assertThat(result).extracting("age")
+			.containsExactly(30, 40);
+	}
+
+	/**
+	 * 나이가 평균 이상인 회원 조회
+	 */
+	@Test
+	public void subQueryIn() {
+
+		QMember memberSub = new QMember("memberSub"); // 메인 쿼리와 서브쿼리의 alias 구분을 위함
+
+		List<Member> result = queryFactory
+			.selectFrom(member)
+			.where(member.age.in(
+				select(memberSub.age)
+					.from(memberSub)
+					.where(memberSub.age.gt(10))
+			))
+			.fetch();
+
+		assertThat(result).extracting("age")
+			.containsExactly(20, 30, 40);
+	}
+
+	@Test
+	public void selectSubQuery() {
+
+		QMember memberSub = new QMember("memberSub");
+
+		List<Tuple> result = queryFactory
+			.select(member.username,
+				select(memberSub.age.avg())
+					.from(member))
+			.fetch();
+
+		for (Tuple tuple : result) {
+			System.out.println("tuple= " + tuple);
+		}
+	}
+
+	// 서브쿼리 한계
+	// JPA의 서브쿼리는 from 절에서의 서브쿼리는 지원하지 않음 -> QueryDSL도 지원하지 않음
+	// QueryDSL은 JPQL의 빌더 역할이라고 생각하면 됨 -> JPA에서 안 되면 QueryDSL도 안 됨
+
+	// 해결
+	// 방법 1. 서브쿼리는 보통 join으로 변경 (가능할 수도, 불가능할 수도) join으로 바꾸는 것이 효율상 더 나을 수도
+	// 방법 2. 쿼리를 두 번으로 나눠서 애플리케이션에서 처리 -> 성능상 별로
+	// 방법 3. native query 사용
+
+	@Test
+	public void basicCase() {
+		List<String> result = queryFactory
+			.select(member.age
+				.when(10).then("열살")
+				.when(20).then("스무살")
+				.otherwise("기타"))
+			.from(member)
+			.fetch();
+
+		for (String s : result) {
+			System.out.println("s= " + s);
+		}
+	}
+
+	@Test
+	public void complexCase() {
+		List<String> result = queryFactory
+			.select(new CaseBuilder()
+				.when(member.age.between(0, 20)).then("0~20살")
+				.when(member.age.between(21, 30)).then("21~30살")
+				.otherwise("기타"))
+			.from(member)
+			.fetch();
+
+		for (String s : result) {
+			System.out.println("s= " + s);
+		}
+	}
+
+	@Test
+	public void constant() {
+		List<Tuple> result = queryFactory
+			.select(member.username, Expressions.constant("A"))
+			.from(member)
+			.fetch();
+
+		for (Tuple tuple : result) {
+			System.out.println("tuple= " + tuple);
+		}
+	}
+
+	@Test
+	public void concat() {
+
+		// {username}_{age} 형태로 만들기    *.stringValue()는 Enum 타입 처리에 자주 활용*
+		List<String> result = queryFactory
+			.select(member.username.concat("_").concat(member.age.stringValue()))
+			.from(member)
+			.where(member.username.eq("member1"))
+			.fetch();
+
+		for (String s : result) {
+			System.out.println("s= " + s);
+		}
 	}
 }
