@@ -727,4 +727,91 @@ public class QuerydslBasicTest {
 	private BooleanExpression allEq(String usernameCond, Integer ageCond) {
 		return usernameEq(usernameCond).and(ageEq(ageCond));
 	}
+
+	// 벌크 연산, 배치 쿼리
+	@Test
+	public void bulkUpdate() {
+
+		// 벌크 연산은 영속성 컨텍스트를 무시하고 DB에 바로 날림 -> 영속성 컨텍스트와 DB의 상태가 서로 다름
+		// 실행 전
+		// member1 = 10 -> DB member1
+		// member2 = 20 -> DB member2
+		// member3 = 30 -> DB member3
+		// member4 = 40 -> DB member4
+
+		// count : 영향을 받은 row 수
+		long count = queryFactory
+			.update(member)
+			.set(member.username, "비회원")
+			.where(member.age.lt(28))
+			.execute();
+
+		// 벌크 연산 후 영속성 컨텍스트를 초기화 하는 것이 안전하다 !
+		em.flush();
+		em.clear();
+
+		// 실행 후 (DB 는 바뀌었지만 영속성 컨텍스트는 그대로임)
+		// member1 = 10 -> 1 DB 비회원
+		// member2 = 20 -> 2 DB 비회원
+		// member3 = 30 -> 3 DB member3
+		// member4 = 40 -> 4 DB member4
+
+		// DB 에서 검색한 내용보다 영속성 컨텍스트의 내용이 우선권
+		// 영속성 컨텍스트에 이미 있다면 DB 에서 검색한 내용 버림
+		List<Member> result = queryFactory
+			.selectFrom(member)
+			.fetch();
+		// 실행 전과 똑같은 결과
+		for (Member member1 : result) {
+			System.out.println("member1= " + member1);
+		}
+	}
+
+	@Test
+	public void bulkAdd() {
+		long count = queryFactory
+			.update(member)
+			.set(member.age, member.age.multiply(2))
+			.execute();
+	}
+
+	@Test
+	public void bulkDelete() {
+		long count = queryFactory
+			.delete(member)
+			.where(member.age.gt(18))
+			.execute();
+	}
+
+	@Test
+	public void sqlFunction() {
+		// H2Dialect 에 등록된 함수여야 함. 아니면 H2Dialect 를 상속받아 구현하고 yml 설정해야.
+		List<String> result = queryFactory
+			.select(Expressions.stringTemplate(
+				"function('replace', {0}, {1}, {2})",
+				member.username, "member", "M")
+			)
+			.from(member)
+			.fetch();
+
+		for (String s : result) {
+			System.out.println("s= " + s);
+		}
+	}
+
+	@Test
+	public void sqlFunction2() {
+		List<String> result = queryFactory
+			.select(member.username)
+			.from(member)
+			// .where(member.username.eq(
+			// 	Expressions.stringTemplate("function('lower', {0})", member.username))
+			// )
+			.where(member.username.eq(member.username.lower()))
+			.fetch();
+
+		for (String s : result) {
+			System.out.println("s= " + s);
+		}
+	}
 }
