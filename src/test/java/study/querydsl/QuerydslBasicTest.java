@@ -15,13 +15,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.PersistenceUnit;
+import study.querydsl.dto.MemberDto;
+import study.querydsl.dto.UserDto;
 import study.querydsl.entity.Member;
 import study.querydsl.entity.QMember;
 import study.querydsl.entity.Team;
@@ -515,6 +520,137 @@ public class QuerydslBasicTest {
 
 		for (String s : result) {
 			System.out.println("s= " + s);
+		}
+	}
+
+	// 프로젝션
+	@Test
+	public void simpleProjection() {
+		List<String> result = queryFactory
+			.select(member.username)
+			.from(member)
+			.fetch();
+
+		for (String s : result) {
+			System.out.println("s= " + s);
+		}
+	}
+
+	@Test
+	public void tupleProjection() {
+
+		// Tuple 은 QueryDSL 의 자료형이므로 repository 단에서만 사용하자!
+		List<Tuple> result = queryFactory
+			.select(member.username, member.age)
+			.from(member)
+			.fetch();
+
+		for (Tuple tuple : result) {
+			String username = tuple.get(member.username);
+			Integer age = tuple.get(member.age);
+
+			System.out.println("username= " + username);
+			System.out.println("age= " + age);
+		}
+	}
+
+	@Test
+	public void findDto() {
+
+		// JPQL 에서 DTO 조회하기 - new 이용해야, 생성자 방식만 지원
+		List<MemberDto> result = em.createQuery("select new study.querydsl.dto.MemberDto(m.username, m.age) "
+			+ "from Member m", MemberDto.class).getResultList();
+
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto= " + memberDto);
+		}
+	}
+
+	/**
+	 * QueryDSL 로 DTO 추출하기
+	 * 1. 프로퍼티 접근
+	 * 2. 필드 직접 접근
+	 * 3. 생성자 사용
+	 */
+	@Test
+	public void findDtoBySeㅅter() {
+		List<MemberDto> result = queryFactory
+			.select(Projections.bean(MemberDto.class,
+				member.username,
+				member.age))
+			.from(member)
+			.fetch();
+
+		// 기본 생성자로 MemberDto 를 만들어서 setter 함 -> @NoArgsConstructor, getter, setter 필요
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto= " + memberDto);
+		}
+	}
+
+	@Test
+	public void findDtoByField() {
+		List<MemberDto> result = queryFactory
+			.select(Projections.fields(MemberDto.class,
+				member.username,
+				member.age))
+			.from(member)
+			.fetch();
+
+		// getter, setter 없어도 됨 -> 필드에 바로 값 추가
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto= " + memberDto);
+		}
+	}
+
+	@Test
+	public void findDtoByConstructor() {
+		List<UserDto> result = queryFactory
+			.select(Projections.constructor(UserDto.class,
+				member.username,
+				member.age))
+			.from(member)
+			.fetch();
+
+		// MemberDto의 생성자 사용 -> 각 필드의 타입이 맞아야. 이름 달라도 됨. 타입에 따라 들어가기 때문
+		for (UserDto memberDto : result) {
+			System.out.println("memberDto= " + memberDto);
+		}
+	}
+
+	@Test
+	public void findUserDtoByField() {
+		List<UserDto> result = queryFactory
+			.select(Projections.fields(UserDto.class,
+				member.username.as("name"),
+				member.age))
+			.from(member)
+			.fetch();
+
+		// UserDto의 필드명과 member 엔티티의 필드명이 일치하지 않아 결과값 없음 -> as 활용
+		for (UserDto userDto : result) {
+			System.out.println("userDto" + userDto);
+		}
+	}
+
+	@Test
+	public void findUserDtoByFieldSubQuery() {
+		QMember memberSub = new QMember("memberSub");
+		List<UserDto> result = queryFactory
+			.select(Projections.fields(UserDto.class,
+				// member.username.as("name"),
+				ExpressionUtils.as(member.username, "name"),
+
+				// 서브쿼리는 .as 사용 불가 -> ExpressionUtils.as(서브쿼리, alias)로 해결
+				ExpressionUtils.as(JPAExpressions
+					.select(memberSub.age.max())
+					.from(memberSub), "age")
+			))
+			.from(member)
+			.fetch();
+
+		// UserDto의 필드명과 member 엔티티의 필드명이 일치하지 않아 결과값 없음 -> as 활용
+		for (UserDto userDto : result) {
+			System.out.println("userDto" + userDto);
 		}
 	}
 }
