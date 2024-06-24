@@ -10,4 +10,10 @@ public class QuerydslApplication {
 		SpringApplication.run(QuerydslApplication.class, args);
 	}
 
+	// JPAQueryFactory Bean 등록
+	// @Bean
+	// public JPAQueryFactory jpaQueryFactory(EntityManager em) {
+	// 	return new JPAQueryFactory(em);
+	// }
+
 }
