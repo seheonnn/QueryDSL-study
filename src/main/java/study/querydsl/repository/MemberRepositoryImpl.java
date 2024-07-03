@@ -22,7 +22,9 @@ import study.querydsl.dto.MemberTeamDto;
 import study.querydsl.dto.QMemberTeamDto;
 import study.querydsl.entity.Member;
 
-public class MemberRepositoryImpl implements MemberRepositoryCustom {
+public class MemberRepositoryImpl
+	// extends QuerydslRepositorySupport
+	implements MemberRepositoryCustom {
 
 	private final JPAQueryFactory queryFactory;
 
@@ -30,8 +32,34 @@ public class MemberRepositoryImpl implements MemberRepositoryCustom {
 		this.queryFactory = new JPAQueryFactory(em);
 	}
 
+	// QuerydslRepositorySupport 추가
+	// public MemberRepositoryImpl(EntityManager em) {
+	// 	super(Member.class);
+	// 	this.queryFactory = new JPAQueryFactory(em);
+	// }
+
 	@Override
 	public List<MemberTeamDto> search(MemberSearchCondition condition) {
+
+		// QuerydslRepositorySupport -> Querydsl 3 버전에서 만들어진 기능이라 순서가 다름, 스프링 데이터의 sort 적용 안 됨
+		// QueryFactory 는 Querydsl 4 버전에 만들어진 기능임.
+		// EntityManager entityManager = getEntityManager();
+		// List<MemberTeamDto> result = from(member)
+		// 	.leftJoin(member.team, team)
+		// 	.where(
+		// 		usernameEq(condition.getUsername()),
+		// 		teamNameEq(condition.getTeamName()),
+		// 		ageGoe(condition.getAgeGoe()),
+		// 		ageLoe(condition.getAgeLoe())
+		// 	)
+		// 	.select(new QMemberTeamDto(
+		// 		member.id.as("memberId"),
+		// 		member.username,
+		// 		member.age,
+		// 		team.id.as("teamId"),
+		// 		team.name.as("teamName")))
+		// 	.fetch();
+
 		return queryFactory
 			.select(new QMemberTeamDto(
 				member.id.as("memberId"),
@@ -155,4 +183,34 @@ public class MemberRepositoryImpl implements MemberRepositoryCustom {
 		// content 와 pageable 을 보고 content 사이즈가 (page 시작임에도) pageSize 보다 작거나 마지막 페이지라면 countQuery 안 날림
 		return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchCount);
 	}
+
+	// QuerydslRepositorySupport 은 Pagination 을 편하게 제공
+	// @Override
+	// public Page<MemberTeamDto> searchPageSimple(MemberSearchCondition condition, Pageable pageable) {
+	//
+	// 	JPQLQuery<MemberTeamDto> jpaQuery = from(member)
+	// 		.leftJoin(member.team, team)
+	// 		.where(
+	// 			usernameEq(condition.getUsername()),
+	// 			teamNameEq(condition.getTeamName()),
+	// 			ageGoe(condition.getAgeGoe()),
+	// 			ageLoe(condition.getAgeLoe())
+	// 		)
+	// 		.select(new QMemberTeamDto(
+	// 			member.id.as("memberId"),
+	// 			member.username,
+	// 			member.age,
+	// 			team.id.as("teamId"),
+	// 			team.name.as("teamName")));
+	//
+	// 	JPQLQuery<MemberTeamDto> query = getQuerydsl().applyPagination(pageable, jpaQuery);
+	//
+	// 	query.fetch();
+	//
+	// 	List<MemberTeamDto> content = results.getResults();
+	// 	long total = results.getTotal();
+	//
+	// 	return new PageImpl<>(content, pageable, total);
+	//
+	// }
 }
